@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Caça-Palavras Scratch</title>
-    <!-- Carrega o Tailwind CSS para estilização moderna e responsiva --><script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carrega o Tailwind CSS para estilização moderna e responsiva -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* Configuração de fonte padrão e estilo de fundo */
         body {
@@ -23,11 +24,12 @@
             height: 0;
             padding-bottom: 100%; /* Truque para células quadradas */
             
-            /* MUDANÇA: Usar grid/place-items para centralização mais robusta */
+            /* Usar grid/place-items para centralização robusta do conteúdo */
             display: grid; 
-            place-items: center; /* Centraliza o conteúdo (letra) */
+            place-items: center; 
             
-            font-size: clamp(10px, 4vw, 20px);
+            /* Garante que o tamanho da fonte se adapta ao dispositivo */
+            font-size: clamp(10px, 4vw, 20px); 
             font-weight: bold;
             cursor: pointer;
             transition: background-color 0.2s, transform 0.1s;
@@ -35,7 +37,7 @@
             -webkit-user-select: none;
             position: relative;
             border-radius: 4px;
-            overflow: hidden; /* Garante que nada exceda o limite da célula */
+            overflow: hidden; 
         }
 
         /* Estilos de seleção de arrasto */
@@ -50,13 +52,6 @@
             color: white;
             transform: scale(1.05);
             font-weight: bolder;
-        }
-
-        /* Linhas de marcação para palavras encontradas */
-        .found-line {
-            position: absolute;
-            background-color: rgba(255, 255, 255, 0.5);
-            pointer-events: none;
         }
 
         /* Efeito de hover no botão */
@@ -119,6 +114,7 @@
             "BLOCO", "GATO", "CENARIO", "CODIGO", "EVENTO",
             "ATOR", "VARIAVEL", "MOVIMENTO", "CONTROLE"
         ];
+        // Definição das 8 direções de busca
         const directions = [
             { dx: 1, dy: 0 },   // Horizontal (Direita)
             { dx: 0, dy: 1 },   // Vertical (Baixo)
@@ -130,9 +126,9 @@
             { dx: -1, dy: 1 }   // Diagonal Inversa Inversa (Baixo-Esquerda)
         ];
 
-        let grid = [];
-        let foundWords = new Set();
-        let isDragging = false;
+        let grid = []; // Armazena a estrutura de dados do tabuleiro
+        let foundWords = new Set(); // Conjunto para rastrear palavras encontradas
+        let isDragging = false; // Flag para rastrear o estado do arrasto (seleção)
         let startCell = null;
         let endCell = null;
         let selectionCoords = []; // Coordenadas [row, col] da seleção atual
@@ -144,7 +140,7 @@
         const foundCountElement = document.getElementById('found-count');
         const resetButton = document.getElementById('reset-button');
         
-        // Inicializa as configurações do Firebase e Autenticação (Não usadas neste jogo local, mas mantidas)
+        // Variáveis do ambiente Canvas (não usadas no jogo local, mas mantidas por robustez)
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
@@ -168,7 +164,7 @@
          * Lógica de Geração do Grid
          */
 
-        // Tenta posicionar uma palavra no grid
+        // Tenta posicionar uma palavra no grid, verificando colisões
         function tryPlaceWord(word, r, c, dir) {
             const len = word.length;
             const placements = [];
@@ -191,22 +187,21 @@
             return placements;
         }
 
-        // Coloca todas as palavras no grid
+        // Coloca todas as palavras no grid e preenche o restante
         function placeWords() {
-            // Inicializa o grid corretamente, garantindo que cada célula seja um objeto único.
+            // Inicializa o grid com células vazias
             grid = Array.from({ length: GRID_SIZE }, () => 
                 Array.from({ length: GRID_SIZE }, () => ({ letter: null, word: null }))
             );
             
-            // 2. Tenta posicionar cada palavra
-            // Embaralha as palavras para ter uma distribuição mais aleatória a cada jogo.
+            // Embaralha as palavras para variar a posição a cada jogo
             const shuffledWords = [...WORDS_TO_FIND].sort(() => Math.random() - 0.5);
 
             shuffledWords.forEach(word => {
                 let placed = false;
                 let attempts = 0;
                 
-                while (!placed && attempts < 500) { // Limita tentativas para evitar loops infinitos
+                while (!placed && attempts < 500) { 
                     attempts++;
                     
                     // Escolhe direção, linha e coluna de início aleatórias
@@ -225,12 +220,11 @@
                 }
                 
                 if (!placed) {
-                    // Isso pode ocorrer se o grid estiver muito cheio, mas deve ser raro com 500 tentativas.
                     console.warn(`Não foi possível colocar a palavra: ${word}`);
                 }
             });
 
-            // 3. Preenche células vazias com letras aleatórias
+            // Preenche células vazias com letras aleatórias
             for (let r = 0; r < GRID_SIZE; r++) {
                 for (let c = 0; c < GRID_SIZE; c++) {
                     if (grid[r][c].letter === null) {
@@ -253,6 +247,9 @@
                     cell.dataset.row = r;
                     cell.dataset.col = c;
                     
+                    // Se a palavra já foi encontrada (ao renderizar de novo), aplica o estilo
+                    // Isso é útil se o estado do jogo fosse salvo, mas aqui apenas prepara os listeners.
+
                     // Adiciona os event listeners de toque e mouse
                     cell.addEventListener('mousedown', handleCellInteraction);
                     cell.addEventListener('mouseenter', handleCellInteraction);
@@ -309,6 +306,7 @@
                 return; // Não é uma linha reta válida para caça-palavras
             }
 
+            // Calcula a direção do passo (1, 0, ou -1)
             const dy = r1 === r2 ? 0 : (r2 > r1 ? 1 : -1);
             const dx = c1 === c2 ? 0 : (c2 > c1 ? 1 : -1);
             const steps = Math.max(dr, dc);
@@ -321,8 +319,7 @@
                 
                 const cell = document.querySelector(`.grid-cell[data-row="${r}"][data-col="${c}"]`);
                 if (cell) {
-                    // CORREÇÃO: Remove a verificação `!cell.classList.contains('found')` aqui para
-                    // permitir a seleção completa de palavras cruzadas.
+                    // Adiciona a célula ao destaque, mesmo se já estiver 'found' (para cruzamento)
                     cell.classList.add('highlight'); 
                     selectionCoords.push({ r, c });
                 }
@@ -343,11 +340,12 @@
             const reversedWordLetters = selectedWordLetters.split('').reverse().join('');
             let foundMatch = null;
 
-            // Encontra a palavra exata na lista (case-insensitive para comparação com a lista original)
+            // Encontra a palavra exata na lista (em ambas as direções)
             const matchedWordInList = WORDS_TO_FIND.find(word => 
                 word === selectedWordLetters || word === reversedWordLetters
             );
 
+            // Verifica se é uma palavra válida E se ainda não foi encontrada
             if (matchedWordInList && !foundWords.has(matchedWordInList)) {
                 foundMatch = matchedWordInList;
             }
@@ -359,7 +357,6 @@
                 // Aplica estilo "found" às células
                 selectionCoords.forEach(coord => {
                     const cell = document.querySelector(`.grid-cell[data-row="${coord.r}"][data-col="${coord.c}"]`);
-                    // Aplica 'found'. Se já tiver, apenas reforça.
                     if (cell) cell.classList.add('found'); 
                 });
                 
@@ -401,20 +398,20 @@
         function handleCellInteraction(event) {
             const cell = event.currentTarget;
 
-            // Se a célula já foi encontrada, não inicia uma nova seleção a partir dela.
-            if (event.type === 'mousedown' && cell.classList.contains('found')) {
-                isDragging = false; 
-                return; 
-            }
-
+            // Inicia o arrasto (mousedown)
             if (event.type === 'mousedown') {
+                // Se o clique inicial for em uma célula já encontrada, não iniciamos uma nova seleção
+                if (cell.classList.contains('found')) {
+                    isDragging = false; 
+                    return; 
+                }
                 isDragging = true;
                 startCell = cell;
                 endCell = cell;
                 highlightSelection(startCell, endCell);
-            } else if (event.type === 'mouseenter' && isDragging) {
-                // Permite a passagem por células "found" para cruzar palavras, 
-                // mas apenas se o arrasto estiver ativo.
+            } 
+            // Durante o arrasto (mouseenter)
+            else if (event.type === 'mouseenter' && isDragging) {
                 endCell = cell;
                 highlightSelection(startCell, endCell);
             }
@@ -427,13 +424,14 @@
             const targetCell = document.elementFromPoint(touch.clientX, touch.clientY);
 
             if (!targetCell || !targetCell.classList.contains('grid-cell')) {
-                // Se o toque sair da grade ou não for uma célula, finaliza o arrasto.
+                // Se o toque sair da grade, finaliza o arrasto.
                 endSelection();
                 return;
             }
 
+            // Inicia o arrasto (touchstart)
             if (event.type === 'touchstart') {
-                // Se a célula inicial já foi encontrada, não inicia a seleção.
+                // Se o toque inicial for em uma célula já encontrada, não iniciamos uma nova seleção
                 if (targetCell.classList.contains('found')) {
                     isDragging = false; 
                     return;
@@ -442,8 +440,9 @@
                 startCell = targetCell;
                 endCell = targetCell;
                 highlightSelection(startCell, endCell);
-            } else if (event.type === 'touchmove' && isDragging) {
-                // Permite a passagem por células "found" para cruzar palavras.
+            } 
+            // Durante o arrasto (touchmove)
+            else if (event.type === 'touchmove' && isDragging) {
                 endCell = targetCell;
                 highlightSelection(startCell, endCell);
             }
