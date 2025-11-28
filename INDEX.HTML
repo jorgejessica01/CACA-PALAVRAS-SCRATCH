@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Caça-Palavras Scratch</title>
+    <!-- Carrega o Tailwind CSS para estilização moderna e responsiva -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Configuração de fonte padrão e estilo de fundo */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f0f5; /* Fundo suave */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 16px;
+        }
+
+        /* Estilo para as células do tabuleiro */
+        .grid-cell {
+            width: 100%;
+            height: 0;
+            padding-bottom: 100%; /* Truque para células quadradas */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: clamp(10px, 4vw, 20px);
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            user-select: none;
+            -webkit-user-select: none;
+            position: relative;
+            border-radius: 4px;
+        }
+
+        /* Estilos de seleção de arrasto */
+        .grid-cell.highlight {
+            background-color: #facc15; /* Amarelo Scratch */
+            color: #1f2937;
+        }
+
+        /* Estilos de palavra encontrada */
+        .grid-cell.found {
+            background-color: #10b981; /* Verde Scratch */
+            color: white;
+            transform: scale(1.05);
+            font-weight: bolder;
+        }
+
+        /* Linhas de marcação para palavras encontradas */
+        .found-line {
+            position: absolute;
+            background-color: rgba(255, 255, 255, 0.5);
+            pointer-events: none;
+        }
+
+        /* Efeito de hover no botão */
+        .scratch-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Estilo para a lista de palavras */
+        .word-item.found-word {
+            text-decoration: line-through;
+            color: #9ca3af; /* Cinza para palavras encontradas */
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app" class="w-full max-w-4xl bg-white shadow-2xl rounded-xl p-6 md:p-10 transition-all duration-300">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-[#ff4b4b] mb-2">
+                Caça-Palavras Scratch
+            </h1>
+            <p class="text-gray-600">Encontre 9 termos da programação em blocos!</p>
+        </header>
+
+        <div class="flex flex-col md:flex-row gap-8">
+            
+            <!-- Grid do Jogo -->
+            <div id="game-grid-container" class="w-full md:w-2/3 bg-blue-500 p-2 md:p-4 rounded-lg shadow-inner">
+                <div id="game-grid" class="grid w-full aspect-square bg-white rounded-md overflow-hidden">
+                    <!-- O grid 12x12 será gerado aqui pelo JavaScript -->
+                </div>
+            </div>
+
+            <!-- Lista de Palavras e Status -->
+            <div class="w-full md:w-1/3 space-y-6">
+                
+                <!-- Palavras a Encontrar -->
+                <div class="bg-purple-100 p-4 rounded-lg shadow-md">
+                    <h2 class="text-xl font-bold text-purple-700 mb-3">Palavras ({<span id="found-count">0</span>}/9)</h2>
+                    <ul id="word-list" class="grid grid-cols-2 gap-x-4 text-lg font-medium text-gray-800">
+                        <!-- A lista de palavras será gerada aqui -->
+                    </ul>
+                </div>
+
+                <!-- Botão e Status -->
+                <div class="space-y-4">
+                    <button id="reset-button" class="scratch-button w-full bg-[#ffab19] text-white py-3 px-6 rounded-lg font-bold text-lg shadow-lg hover:bg-[#fa9c0c] transition-all duration-200">
+                        Novo Jogo
+                    </button>
+                    
+                    <div id="status-message" class="text-center text-lg font-semibold min-h-[2.5rem] flex items-center justify-center rounded-lg">
+                        Pronto para começar!
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Variáveis globais e de configuração
+        const GRID_SIZE = 12;
+        const WORDS_TO_FIND = [
+            "BLOCO", "GATO", "CENARIO", "CODIGO", "EVENTO",
+            "ATOR", "VARIAVEL", "MOVIMENTO", "CONTROLE"
+        ];
+        const directions = [
+            { dx: 1, dy: 0 },   // Horizontal
+            { dx: 0, dy: 1 },   // Vertical
+            { dx: 1, dy: 1 },   // Diagonal Principal
+            { dx: 1, dy: -1 },  // Diagonal Inversa
+            { dx: -1, dy: 0 },  // Horizontal Inversa
+            { dx: 0, dy: -1 },  // Vertical Inversa
+            { dx: -1, dy: -1 }, // Diagonal Principal Inversa
+            { dx: -1, dy: 1 }   // Diagonal Inversa Inversa
+        ];
+
+        let grid = [];
+        let foundWords = new Set();
+        let isDragging = false;
+        let startCell = null;
+        let endCell = null;
+        let selectionCoords = []; // Coordenadas [row, col] da seleção atual
+        
+        // Elementos do DOM
+        const gridElement = document.getElementById('game-grid');
+        const wordListElement = document.getElementById('word-list');
+        const statusMessage = document.getElementById('status-message');
+        const foundCountElement = document.getElementById('found-count');
+        const resetButton = document.getElementById('reset-button');
+        
+        // Inicializa as configurações do Firebase e Autenticação (Necessário para a plataforma Canvas, mas não usado para este jogo local)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        /**
+         * Funções Auxiliares
+         */
+
+        // Função para obter uma letra aleatória
+        function getRandomLetter() {
+            const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            return alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+        }
+
+        // Função para verificar se uma posição está dentro dos limites do grid
+        function isValid(r, c) {
+            return r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE;
+        }
+
+        /**
+         * Lógica de Geração do Grid
+         */
+
+        // Tenta posicionar uma palavra no grid
+        function tryPlaceWord(word, r, c, dir) {
+            const len = word.length;
+            const placements = [];
+
+            for (let i = 0; i < len; i++) {
+                const row = r + i * dir.dy;
+                const col = c + i * dir.dx;
+
+                if (!isValid(row, col)) return null;
+
+                const currentCell = grid[row][col];
+                
+                // Se a célula estiver vazia (null) ou a letra for a mesma, OK.
+                if (currentCell === null || currentCell.letter === word[i]) {
+                    placements.push({ row, col, letter: word[i] });
+                } else {
+                    return null; // Colisão com letra diferente
+                }
+            }
+            return placements;
+        }
+
+        // Coloca todas as palavras no grid
+        function placeWords() {
+            // 1. Inicializa o grid com null
+            grid = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(null).map(() => ({ letter: null, word: null })));
+            
+            // 2. Tenta posicionar cada palavra
+            WORDS_TO_FIND.forEach(word => {
+                let placed = false;
+                let attempts = 0;
+                
+                while (!placed && attempts < 500) {
+                    attempts++;
+                    
+                    // Escolhe direção, linha e coluna de início aleatórias
+                    const dir = directions[Math.floor(Math.random() * directions.length)];
+                    const startR = Math.floor(Math.random() * GRID_SIZE);
+                    const startC = Math.floor(Math.random() * GRID_SIZE);
+
+                    const placements = tryPlaceWord(word, startR, startC, dir);
+
+                    if (placements) {
+                        placements.forEach(({ row, col, letter }) => {
+                            grid[row][col] = { letter: letter, word: word };
+                        });
+                        placed = true;
+                    }
+                }
+                
+                if (!placed) {
+                    console.warn(`Não foi possível colocar a palavra: ${word}`);
+                }
+            });
+
+            // 3. Preenche células vazias com letras aleatórias
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    if (grid[r][c].letter === null) {
+                        grid[r][c].letter = getRandomLetter();
+                    }
+                }
+            }
+        }
+
+        // Renderiza o grid HTML
+        function renderGrid() {
+            gridElement.innerHTML = '';
+            gridElement.style.gridTemplateColumns = `repeat(${GRID_SIZE}, 1fr)`;
+            
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell bg-white hover:bg-gray-200 transition-colors duration-100 ease-in-out text-gray-800';
+                    cell.textContent = grid[r][c].letter;
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+                    
+                    // Adiciona os event listeners de toque e mouse
+                    cell.addEventListener('mousedown', handleCellInteraction);
+                    cell.addEventListener('mouseenter', handleCellInteraction);
+                    cell.addEventListener('touchstart', handleTouchInteraction);
+                    cell.addEventListener('touchmove', handleTouchInteraction);
+
+                    gridElement.appendChild(cell);
+                }
+            }
+        }
+
+        // Renderiza a lista de palavras
+        function renderWordList() {
+            wordListElement.innerHTML = '';
+            WORDS_TO_FIND.forEach(word => {
+                const li = document.createElement('li');
+                li.id = `word-${word}`;
+                li.className = 'word-item capitalize p-1 rounded transition-colors duration-200';
+                li.textContent = word.toLowerCase(); // Exibe em minúsculas
+                if (foundWords.has(word)) {
+                    li.classList.add('found-word');
+                }
+                wordListElement.appendChild(li);
+            });
+        }
+
+        /**
+         * Lógica de Interação
+         */
+
+        // Limpa a seleção visual atual
+        function clearHighlight() {
+            document.querySelectorAll('.grid-cell.highlight').forEach(cell => {
+                cell.classList.remove('highlight');
+            });
+            selectionCoords = [];
+        }
+
+        // Função principal para desenhar a seleção entre dois pontos
+        function highlightSelection(start, end) {
+            clearHighlight();
+            if (!start || !end) return;
+
+            const r1 = parseInt(start.dataset.row);
+            const c1 = parseInt(start.dataset.col);
+            const r2 = parseInt(end.dataset.row);
+            const c2 = parseInt(end.dataset.col);
+
+            const dr = Math.abs(r1 - r2);
+            const dc = Math.abs(c1 - c2);
+
+            // A seleção deve ser horizontal, vertical ou diagonal
+            if (dr !== 0 && dc !== 0 && dr !== dc) {
+                return; // Não é uma linha reta válida para caça-palavras
+            }
+
+            const dy = r1 === r2 ? 0 : (r2 > r1 ? 1 : -1);
+            const dx = c1 === c2 ? 0 : (c2 > c1 ? 1 : -1);
+            const steps = Math.max(dr, dc);
+
+            selectionCoords = [];
+            
+            for (let i = 0; i <= steps; i++) {
+                const r = r1 + i * dy;
+                const c = c1 + i * dx;
+                
+                const cell = document.querySelector(`.grid-cell[data-row="${r}"][data-col="${c}"]`);
+                if (cell) {
+                    cell.classList.add('highlight');
+                    selectionCoords.push({ r, c });
+                }
+            }
+        }
+        
+        // Verifica se a seleção corresponde a uma palavra encontrada
+        function checkSelection() {
+            if (selectionCoords.length < 2) return;
+
+            // 1. Obter a palavra da seleção
+            let selectedWord = selectionCoords.map(coord => grid[coord.r][coord.c].letter).join('');
+            
+            // 2. Verificar se a palavra ou seu inverso está na lista
+            const reversedWord = selectedWord.split('').reverse().join('');
+            let foundMatch = null;
+
+            if (WORDS_TO_FIND.includes(selectedWord) && !foundWords.has(selectedWord)) {
+                foundMatch = selectedWord;
+            } else if (WORDS_TO_FIND.includes(reversedWord) && !foundWords.has(reversedWord)) {
+                foundMatch = reversedWord;
+            }
+
+            // 3. Processar o resultado
+            if (foundMatch) {
+                foundWords.add(foundMatch);
+                
+                // Aplica estilo "found" às células
+                selectionCoords.forEach(coord => {
+                    const cell = document.querySelector(`.grid-cell[data-row="${coord.r}"][data-col="${coord.c}"]`);
+                    if (cell) cell.classList.add('found');
+                });
+                
+                // Atualiza a lista de palavras
+                document.getElementById(`word-${foundMatch}`).classList.add('found-word');
+                foundCountElement.textContent = foundWords.size;
+
+                statusMessage.className = 'text-center text-lg font-bold text-green-600 min-h-[2.5rem] flex items-center justify-center rounded-lg';
+                statusMessage.textContent = `Palavra encontrada: ${foundMatch}!`;
+
+                // Verifica vitória
+                if (foundWords.size === WORDS_TO_FIND.length) {
+                    statusMessage.className = 'text-center text-xl font-black text-yellow-600 min-h-[2.5rem] flex items-center justify-center rounded-lg bg-yellow-200 p-2';
+                    statusMessage.textContent = 'PARABÉNS! Você encontrou todos os termos Scratch!';
+                }
+
+            } else {
+                // Seleção incorreta - feedback visual rápido
+                selectionCoords.forEach(coord => {
+                    const cell = document.querySelector(`.grid-cell[data-row="${coord.r}"][data-col="${coord.c}"]`);
+                    if (cell) {
+                        cell.classList.add('bg-red-300');
+                        setTimeout(() => cell.classList.remove('bg-red-300'), 300);
+                    }
+                });
+
+                statusMessage.className = 'text-center text-lg font-semibold text-red-500 min-h-[2.5rem] flex items-center justify-center rounded-lg';
+                statusMessage.textContent = 'Não é uma palavra válida ou já foi encontrada.';
+            }
+
+            // Limpa a seleção e reseta o arrasto
+            clearHighlight();
+            startCell = null;
+            endCell = null;
+        }
+
+
+        // Manipulador de eventos de Mouse
+        function handleCellInteraction(event) {
+            const cell = event.currentTarget;
+
+            if (cell.classList.contains('found')) return; // Ignora células já encontradas
+
+            if (event.type === 'mousedown') {
+                isDragging = true;
+                startCell = cell;
+                endCell = cell;
+                highlightSelection(startCell, endCell);
+            } else if (event.type === 'mouseenter' && isDragging) {
+                endCell = cell;
+                highlightSelection(startCell, endCell);
+            }
+        }
+
+        // Manipulador de eventos de Toque (Touch)
+        function handleTouchInteraction(event) {
+            event.preventDefault(); // Evita scroll
+            const touch = event.touches[0];
+            const targetCell = document.elementFromPoint(touch.clientX, touch.clientY);
+
+            if (!targetCell || !targetCell.classList.contains('grid-cell') || targetCell.classList.contains('found')) return;
+
+            if (event.type === 'touchstart') {
+                isDragging = true;
+                startCell = targetCell;
+                endCell = targetCell;
+                highlightSelection(startCell, endCell);
+            } else if (event.type === 'touchmove' && isDragging) {
+                endCell = targetCell;
+                highlightSelection(startCell, endCell);
+            }
+        }
+        
+        // Finaliza a seleção (Mouse Up e Touch End)
+        function endSelection() {
+            if (isDragging && startCell && endCell) {
+                checkSelection();
+            }
+            isDragging = false;
+        }
+
+        // Adiciona listeners globais para finalizar a seleção
+        document.addEventListener('mouseup', endSelection);
+        document.addEventListener('touchend', endSelection);
+
+        /**
+         * Inicialização e Reset
+         */
+        
+        // Função para iniciar um novo jogo
+        function initGame() {
+            foundWords.clear();
+            isDragging = false;
+            startCell = null;
+            endCell = null;
+            selectionCoords = [];
+            
+            placeWords();
+            renderGrid();
+            renderWordList();
+            
+            foundCountElement.textContent = 0;
+            statusMessage.className = 'text-center text-lg font-semibold text-gray-700 min-h-[2.5rem] flex items-center justify-center rounded-lg';
+            statusMessage.textContent = 'Encontre a primeira palavra!';
+            
+            console.log("Grid gerado com sucesso. Palavras escondidas:", WORDS_TO_FIND.join(", "));
+        }
+
+        // Adiciona listener ao botão de Novo Jogo
+        resetButton.addEventListener('click', initGame);
+
+        // Inicia o jogo quando a página carrega
+        window.onload = initGame;
+        
+    </script>
+</body>
+</html>
